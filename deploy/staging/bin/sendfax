@@ -1,0 +1,5 @@
+#!/bin/sh
+# Staging stub: accepts the job HylaFAX would have accepted, and records the
+# document it was handed so a test can prove what the pipeline produced.
+printf '%s\n' "$*" >> /tmp/sendfax-calls.txt
+echo "request id is 777 (1 file)"

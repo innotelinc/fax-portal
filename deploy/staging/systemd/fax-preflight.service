@@ -1,0 +1,14 @@
+[Unit]
+Description=Fax portal staging preflight (typecheck, tests, browser sign-in)
+Documentation=file:///root/fax-portal/README.md
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/root/fax-portal
+ExecStart=/root/fax-portal/deploy/staging/preflight.sh
+# The e2e creates and deletes a user in Authentik and drives Chromium; a run
+# that hangs must not block the next one.
+TimeoutStartSec=20min
+Nice=10

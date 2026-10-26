@@ -1,0 +1,4 @@
+#!/bin/sh
+# Staging stub: reports a fixed queue instead of asking HylaFAX.
+echo "HylaFAX scheduler on fax-staging: Running"
+echo " 777 127   0       1       0      0 +15550000000 +15559876543 2 Sending job"

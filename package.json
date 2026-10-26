@@ -1,0 +1,32 @@
+{
+  "name": "@innotel/fax-portal",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Replacement web portal for the Innotel fax plane. Owns the browser experience and, at cut-over, the HylaFAX control path that AvantFAX's PHP currently holds.",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "npm run build && node --watch dist/src/server.js",
+    "start": "node dist/src/server.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "npm run build && node --test dist/test/*.test.js",
+    "smoke:pipeline": "npm run build && node scripts/smoke-pipeline.mjs",
+    "signin:e2e": "node scripts/signin-e2e.mjs"
+  },
+  "dependencies": {
+    "@fastify/cookie": "^11.0.2",
+    "@fastify/formbody": "^8.0.2",
+    "@fastify/multipart": "^9.4.0",
+    "fastify": "^5.2.1",
+    "jose": "^5.9.6",
+    "mysql2": "^3.12.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.5",
+    "playwright": "^1.62.1",
+    "typescript": "^5.7.3"
+  }
+}

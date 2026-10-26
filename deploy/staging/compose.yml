@@ -1,0 +1,101 @@
+# Staging stack for the fax portal.
+#
+# It is deliberately self-contained: its own MariaDB, its own archive volume and
+# a STUB fax transport. Nothing here dials a modem or touches the production
+# `avantfax` database — staging exists to click through the product, not to send
+# faxes. The stub still goes through the real quarantine → Ghostscript → sendfax
+# path, so the send flow is exercised end to end.
+name: fax-staging
+
+services:
+  db:
+    image: mariadb:11
+    restart: unless-stopped
+    environment:
+      MARIADB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:?set DB_ROOT_PASSWORD in .env}
+      MARIADB_DATABASE: avantfax
+    volumes:
+      - db:/var/lib/mysql
+      - ./seed.sql:/docker-entrypoint-initdb.d/10-seed.sql:ro
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  # One-shot: puts a real PDF in the archive so the viewer and search have
+  # something to show. The image already carries Ghostscript.
+  seed:
+    image: innotel/fax-portal:staging
+    # Writes one file into a volume the portal mounts read-only, then exits.
+    user: "0:0"
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -e
+        gs -q -dNOPAUSE -dBATCH -sDEVICE=pdfwrite -sOutputFile=/archive/welcome.pdf \
+          -c "/Helvetica-Bold findfont 18 scalefont setfont 72 720 moveto (Welcome to fax staging) show \
+              /Helvetica findfont 12 scalefont setfont 72 690 moveto (This is a sample inbound fax for the staging portal.) show \
+              72 672 moveto (It exists so the viewer, search and triage have something real to show.) show \
+              72 648 moveto (Reference STAGE-0001 - Innotel Fax staging environment.) show showpage"
+        chmod 0644 /archive/welcome.pdf
+        # The portal runs as uid 1000 and must be able to write its spool.
+        chown -R 1000:1000 /spool
+        chmod 0750 /spool
+    volumes:
+      - archive:/archive
+      - spool:/spool
+
+  portal:
+    image: innotel/fax-portal:staging
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      seed:
+        condition: service_completed_successfully
+    env_file:
+      - ./.env
+    # Sign-in needs to reach Authentik at its public name, because that name is
+    # the token issuer and must not be rewritten. Through the WAN address the
+    # router's hairpin NAT completes TCP and the TLS handshake but never returns
+    # an HTTP response to traffic from a docker bridge, so discovery and the
+    # code exchange hang until their timeouts and every sign-in fails. Pointing
+    # the name at the reverse proxy's LAN address keeps the issuer, the
+    # redirect URI and the certificate identical and makes the exchange work.
+    extra_hosts:
+      - "auth.cerulean.innotel.us:${FAX_OIDC_INTERNAL_ADDR:-192.168.1.71}"
+    environment:
+      FAX_DB_HOST: db
+      FAX_DB_PORT: "3306"
+      FAX_DB_USER: root
+      FAX_DB_PASSWORD: ${DB_ROOT_PASSWORD}
+      FAX_DB_NAME: avantfax
+      # Stub transport: see ./bin. It prints a request id instead of dialling.
+      FAX_HYLAFAX_BIN: /opt/fax-stub
+      FAX_HYLAFAX_SPOOL: /var/lib/fax-portal/spool
+      FAX_QUARANTINE_DIR: /var/lib/fax-portal/quarantine
+      FAX_ARCHIVE_DIR: /archive
+      FAX_GHOSTSCRIPT_BIN: /usr/bin/gs
+      FAX_PDFTOTEXT_BIN: /usr/bin/pdftotext
+      PORT: "3000"
+    volumes:
+      - ./bin:/opt/fax-stub:ro
+      - archive:/archive:ro
+      - spool:/var/lib/fax-portal/spool
+    ports:
+      - "3997:3000"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  db:
+  archive:
+  spool:
